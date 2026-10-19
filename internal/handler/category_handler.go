@@ -19,11 +19,15 @@ func NewCategoryHandler(repo repository.CategoryRepository) *CategoryHandler {
 	return &CategoryHandler{repo: repo}
 }
 
-// Register attaches the category routes to the group.
-func (h *CategoryHandler) Register(r *gin.RouterGroup) {
-	r.POST("/categories", h.CreateCategory)
+// RegisterPublic підключає маршрути читання (доступні без токена).
+func (h *CategoryHandler) RegisterPublic(r *gin.RouterGroup) {
 	r.GET("/categories", h.ListCategories)
 	r.GET("/categories/:id", h.GetCategory)
+}
+
+// RegisterStaff підключає маршрути запису (librarian / admin).
+func (h *CategoryHandler) RegisterStaff(r *gin.RouterGroup) {
+	r.POST("/categories", h.CreateCategory)
 }
 
 // CreateCategory answers POST /categories.

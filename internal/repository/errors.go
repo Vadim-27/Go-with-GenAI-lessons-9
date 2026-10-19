@@ -56,3 +56,10 @@ func pageOffset(page, limit int) (int, bool) {
 	}
 	return (page - 1) * limit, true
 }
+
+// ErrCopyUnavailable повертається, коли примірник не можна видати
+// (він уже виданий, загублений або на ремонті).
+var ErrCopyUnavailable = errors.New("copy is not available")
+
+// ErrAlreadyReturned повертається при повторному поверненні тієї самої позики.
+var ErrAlreadyReturned = errors.New("loan already returned")

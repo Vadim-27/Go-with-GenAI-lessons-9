@@ -21,11 +21,15 @@ func NewBookHandler(repo repository.BookRepository) *BookHandler {
 	return &BookHandler{repo: repo}
 }
 
-// Register attaches the book routes to the group.
-func (h *BookHandler) Register(r *gin.RouterGroup) {
-	r.POST("/books", h.CreateBook)
+// RegisterPublic підключає маршрути читання (доступні без токена).
+func (h *BookHandler) RegisterPublic(r *gin.RouterGroup) {
 	r.GET("/books", h.ListBooks)
 	r.GET("/books/:id", h.GetBook)
+}
+
+// RegisterStaff підключає маршрути запису (librarian / admin).
+func (h *BookHandler) RegisterStaff(r *gin.RouterGroup) {
+	r.POST("/books", h.CreateBook)
 	r.PUT("/books/:id", h.UpdateBook)
 	r.DELETE("/books/:id", h.DeleteBook)
 }

@@ -18,6 +18,9 @@ import (
 	"libratrack/internal/repository"
 )
 
+// maxBodyBytes — максимальний розмір тіла JSON-запиту (1 МБ).
+const maxBodyBytes = 1 << 20
+
 // Pagination parameters of list endpoints.
 const (
 	defaultPage  = 1
@@ -40,7 +43,11 @@ func respondRepoError(c *gin.Context, err error, resource string) {
 		respondError(c, http.StatusConflict, model.CodeConflict, resource+" already exists")
 	case errors.Is(err, repository.ErrInvalidReference):
 		respondError(c, http.StatusUnprocessableEntity, model.CodeInvalidReference,
-			"A referenced author or category does not exist")
+			"A referenced resource (author, category, user) does not exist")
+	case errors.Is(err, repository.ErrCopyUnavailable):
+		respondError(c, http.StatusConflict, model.CodeConflict, "Copy is not available for loan")
+	case errors.Is(err, repository.ErrAlreadyReturned):
+		respondError(c, http.StatusConflict, model.CodeConflict, "Loan is already returned")
 	case errors.Is(err, model.ErrValidation):
 		respondError(c, http.StatusUnprocessableEntity, model.CodeValidationError, err.Error())
 	default:
@@ -73,7 +80,13 @@ func bindInput(c *gin.Context, in validatable) bool {
 // decodeBody decodes the body into dst and requires that nothing follows the
 // JSON object: `{...} garbage` is not valid JSON.
 func decodeBody(c *gin.Context, dst any) error {
-	dec := json.NewDecoder(c.Request.Body)
+	// Обмеження розміру тіла: інакше величезний JSON з'їсть пам'ять (DoS).
+	// Перевищення дає помилку читання -> 422 "Invalid request body".
+	body := http.MaxBytesReader(c.Writer, c.Request.Body, maxBodyBytes)
+	dec := json.NewDecoder(body)
+	// Невідомі поля ({"role":"admin"} у RegisterRequest) — помилка, а не тихе
+	// ігнорування: це захист від Mass Assignment.
+	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
 		return err
 	}

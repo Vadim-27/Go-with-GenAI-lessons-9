@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"libratrack/internal/app"
+	"libratrack/internal/auth"
+	"libratrack/internal/model"
 	"libratrack/internal/testutil"
 )
 
@@ -19,11 +21,24 @@ const schemaName = "t_handler"
 type api struct {
 	t      *testing.T
 	router http.Handler
+	token  string // JWT бібліотекаря: усі записи каталогу потребують ролі staff
 }
 
 func newAPI(t *testing.T) *api {
 	t.Helper()
-	return &api{t: t, router: app.NewRouter(testutil.NewDB(t, schemaName))}
+	t.Setenv("JWT_SECRET", "handler-test-secret-at-least-32-characters")
+
+	db := testutil.NewDB(t, schemaName)
+	// Каталог змінює лише staff, тож створюємо бібліотекаря і видаємо йому токен.
+	staff := model.User{Email: "staff@libratrack.com", PasswordHash: "x", Role: model.RoleLibrarian}
+	if err := db.Create(&staff).Error; err != nil {
+		t.Fatal(err)
+	}
+	token, err := auth.GenerateToken(staff.ID, staff.Role)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &api{t: t, router: app.NewRouter(db), token: token}
 }
 
 // call sends a request and returns the status code and the decoded JSON body.
@@ -33,6 +48,9 @@ func (a *api) call(method, path, body string) (int, map[string]any) {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if a.token != "" {
+		req.Header.Set("Authorization", "Bearer "+a.token)
 	}
 	rec := httptest.NewRecorder()
 	a.router.ServeHTTP(rec, req)

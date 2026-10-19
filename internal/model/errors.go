@@ -9,6 +9,9 @@ const (
 	CodeConflict            = "conflict"
 	CodeInvalidReference    = "invalid_reference"
 	CodeInternalServerError = "internal_server_error"
+	// Коди автентифікації та авторизації.
+	CodeUnauthenticated = "unauthenticated" // 401: немає або недійсний токен
+	CodeForbidden       = "forbidden"       // 403: роль не має доступу
 )
 
 // ErrorResponse is the JSON error envelope:

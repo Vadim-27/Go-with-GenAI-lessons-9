@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"libratrack/internal/app"
+	"libratrack/internal/auth"
 	"libratrack/internal/repository"
 )
 
@@ -18,6 +19,10 @@ func main() {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Fatal("DATABASE_URL is not set")
+	}
+	// Без надійного JWT_SECRET (>= 32 символи) сервер не стартує.
+	if err := auth.ValidateSecret(); err != nil {
+		log.Fatalf("config: %v", err)
 	}
 	migrationsPath := getenv("MIGRATIONS_PATH", "migrations")
 	addr := ":" + getenv("PORT", "8080")

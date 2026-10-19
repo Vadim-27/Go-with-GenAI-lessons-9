@@ -37,6 +37,14 @@ func TestSpec_DescribesEveryRoute(t *testing.T) {
 		"/api/v1/books/{id}":              {"get", "put", "delete"},
 		"/api/v1/books/{id}/copies":       {"get", "post"},
 		"/api/v1/books/{id}/availability": {"get"},
+		"/api/v1/auth/register":           {"post"},
+		"/api/v1/auth/login":              {"post"},
+		"/api/v1/me":                      {"get", "put"},
+		"/api/v1/me/loans":                {"get"},
+		"/api/v1/loans":                   {"post"},
+		"/api/v1/loans/{id}/return":       {"post"},
+		"/api/v1/users":                   {"get"},
+		"/api/v1/users/{id}/role":         {"put"},
 	}
 	for path, methods := range want {
 		item, ok := paths[path].(map[string]any)

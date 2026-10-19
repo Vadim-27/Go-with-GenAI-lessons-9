@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"time"
@@ -20,15 +21,25 @@ const (
 	connMaxIdleTime = 5 * time.Minute
 )
 
-// Open connects to PostgreSQL, configures the connection pool and turns on
-// the GORM logger at Info level, so every SQL statement is printed to stdout.
-func Open(dsn string) (*gorm.DB, error) {
-	sqlLogger := logger.New(log.New(os.Stdout, "", log.LstdFlags), logger.Config{
+// SQLLogger повертає GORM-логер рівня Info, що пише в w.
+//
+// ParameterizedQueries: true підставляє в лог плейсхолдери ($1, $2...) замість
+// значень. Без цього в логи потрапляли б email та bcrypt-хеші паролів із
+// INSERT/SELECT по users.
+func SQLLogger(w io.Writer) logger.Interface {
+	return logger.New(log.New(w, "", log.LstdFlags), logger.Config{
 		SlowThreshold:             200 * time.Millisecond,
 		LogLevel:                  logger.Info,
 		IgnoreRecordNotFoundError: true,
+		ParameterizedQueries:      true,
 		Colorful:                  false,
 	})
+}
+
+// Open connects to PostgreSQL, configures the connection pool and turns on
+// the GORM logger at Info level, so every SQL statement is printed to stdout.
+func Open(dsn string) (*gorm.DB, error) {
+	sqlLogger := SQLLogger(os.Stdout)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: sqlLogger})
 	if err != nil {

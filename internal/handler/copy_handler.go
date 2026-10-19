@@ -21,11 +21,15 @@ func NewCopyHandler(repo repository.CopyRepository) *CopyHandler {
 	return &CopyHandler{repo: repo}
 }
 
-// Register attaches the copy routes to the group.
-func (h *CopyHandler) Register(r *gin.RouterGroup) {
-	r.POST("/books/:id/copies", h.CreateCopy)
+// RegisterPublic підключає маршрути читання (доступні без токена).
+func (h *CopyHandler) RegisterPublic(r *gin.RouterGroup) {
 	r.GET("/books/:id/copies", h.ListCopies)
 	r.GET("/books/:id/availability", h.GetAvailability)
+}
+
+// RegisterStaff підключає маршрути запису (librarian / admin).
+func (h *CopyHandler) RegisterStaff(r *gin.RouterGroup) {
+	r.POST("/books/:id/copies", h.CreateCopy)
 }
 
 // CreateCopy answers POST /books/{id}/copies.

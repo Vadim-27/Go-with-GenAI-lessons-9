@@ -19,11 +19,15 @@ func NewAuthorHandler(repo repository.AuthorRepository) *AuthorHandler {
 	return &AuthorHandler{repo: repo}
 }
 
-// Register attaches the author routes to the group.
-func (h *AuthorHandler) Register(r *gin.RouterGroup) {
-	r.POST("/authors", h.CreateAuthor)
+// RegisterPublic підключає маршрути читання (доступні без токена).
+func (h *AuthorHandler) RegisterPublic(r *gin.RouterGroup) {
 	r.GET("/authors", h.ListAuthors)
 	r.GET("/authors/:id", h.GetAuthor)
+}
+
+// RegisterStaff підключає маршрути запису (librarian / admin).
+func (h *AuthorHandler) RegisterStaff(r *gin.RouterGroup) {
+	r.POST("/authors", h.CreateAuthor)
 }
 
 // CreateAuthor answers POST /authors.

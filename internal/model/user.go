@@ -2,6 +2,13 @@ package model
 
 import "time"
 
+// Ролі користувачів. Збігаються з CHECK ck_users_role у базі даних.
+const (
+	RoleReader    = "reader"
+	RoleLibrarian = "librarian"
+	RoleAdmin     = "admin"
+)
+
 // User is a library account. The password hash is never serialised.
 type User struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`

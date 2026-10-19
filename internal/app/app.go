@@ -9,6 +9,7 @@ import (
 
 	"libratrack/internal/handler"
 	"libratrack/internal/middleware"
+	"libratrack/internal/model"
 	"libratrack/internal/repository"
 )
 
@@ -24,6 +25,10 @@ func NewRouter(db *gorm.DB) http.Handler {
 	authors := handler.NewAuthorHandler(repository.NewAuthorRepository(db))
 	books := handler.NewBookHandler(repository.NewBookRepository(db))
 	copies := handler.NewCopyHandler(repository.NewCopyRepository(db))
+	usersRepo := repository.NewUserRepository(db)
+	authH := handler.NewAuthHandler(usersRepo)
+	users := handler.NewUserHandler(usersRepo)
+	loans := handler.NewLoanHandler(repository.NewLoanRepository(db))
 
 	r := gin.New()
 	// Order matters: Logger is the outermost so it sees the 500 after a panic;
@@ -38,10 +43,35 @@ func NewRouter(db *gorm.DB) http.Handler {
 	r.GET("/swagger/index.html", handler.SwaggerUI)
 
 	api := r.Group("/api/v1")
-	categories.Register(api)
-	authors.Register(api)
-	books.Register(api)
-	copies.Register(api)
+
+	// Групи маршрутів. Кожна група успадковує middleware батьківської,
+	// тому ПОРЯДОК вкладення визначає порядок виконання:
+	//   public    — без токена;
+	//   protected — AuthMiddleware (401, якщо токен відсутній/недійсний);
+	//   staff     — protected + RequireRole(librarian, admin) (403 для інших);
+	//   admin     — protected + RequireRole(admin).
+	// Auth завжди ПЕРЕД RBAC: RequireRole читає роль, яку кладе AuthMiddleware.
+	public := api.Group("")
+	protected := api.Group("", middleware.AuthMiddleware())
+	staff := protected.Group("", middleware.RequireRole(model.RoleLibrarian, model.RoleAdmin))
+	admin := protected.Group("", middleware.RequireRole(model.RoleAdmin))
+
+	authH.Register(public) // POST /auth/register, POST /auth/login
+	categories.RegisterPublic(public)
+	authors.RegisterPublic(public)
+	books.RegisterPublic(public)
+	copies.RegisterPublic(public)
+
+	categories.RegisterStaff(staff)
+	authors.RegisterStaff(staff)
+	books.RegisterStaff(staff)
+	copies.RegisterStaff(staff)
+	loans.RegisterStaff(staff) // POST /loans, POST /loans/:id/return
+
+	loans.RegisterProtected(protected) // GET /me/loans
+	users.RegisterProtected(protected) // GET/PUT /me
+
+	users.RegisterAdmin(admin) // GET /users, PUT /users/:id/role
 
 	return r
 }

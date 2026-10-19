@@ -1,0 +1,138 @@
+===============================================================
+LibraTrack — журнал промптів (Тема 9)
+===============================================================
+
+---------------------------------------------------------------
+ЗАВДАННЯ 2.1 — Модуль автентифікації (bcrypt + видача JWT)
+---------------------------------------------------------------
+
+Контекст, який передається разом із промптом:
+  * Go 1.26, Gin v1.10, GORM + PostgreSQL, міграції golang-migrate;
+  * шари: handler -> repository (інтерфейс) -> GORM; модуль `libratrack`;
+  * наявна модель model.User (id, email, password_hash, full_name, role,
+    created_at); таблиця users з міграції 000001 УЖЕ має password_hash і role;
+  * формат помилок: {"error": {"code": "...", "message": "..."}}.
+
+ПРОМПТ:
+
+  Ти — досвідчений Go-розробник, що пише безпечний код. Реалізуй автентифікацію
+  для REST API LibraTrack (Gin + GORM + PostgreSQL). Стиль: коментарі
+  українською, ідіоматичний Go, без зайвих абстракцій.
+
+  1) Міграції БД
+     Створи migrations/000003_add_auth_fields.up.sql та .down.sql.
+     Колонки users.password_hash та users.role вже існують у 000001, тому НЕ
+     додавай їх вдруге (ALTER ... ADD COLUMN впаде). Замість цього додай:
+       - індекс idx_users_role ON users(role);
+       - таблицю loans (id, user_id, copy_id, issued_by, issued_at, due_at,
+         returned_at) з FK ON DELETE RESTRICT, CHECK (due_at > issued_at),
+         індексами на кожен FK і частковим UNIQUE-індексом по copy_id WHERE
+         returned_at IS NULL (примірник не можна видати двічі).
+     .down.sql має видаляти все у зворотному порядку.
+
+  2) Модель
+     Онови model.User: PasswordHash має тег `json:"-"` (хеш ніколи не
+     серіалізується). Додай константи ролей RoleReader/RoleLibrarian/RoleAdmin.
+
+  3) Пакет internal/auth
+     - HashPassword(password) -> bcrypt.GenerateFromPassword з bcrypt.DefaultCost.
+     - CheckPassword(hash, password) -> bcrypt.CompareHashAndPassword.
+     - GenerateToken(userID, role): jwt.SigningMethodHS256, claims user_id, role,
+       exp = now + 24h (та iat). Секрет читай ВИКЛЮЧНО через
+       os.Getenv("JWT_SECRET"); якщо порожній або коротший за 32 символи —
+       повертай помилку (не використовуй дефолтний секрет).
+     - ParseToken(token): дозволяй лише HS256 (jwt.WithValidMethods) та вимагай
+       exp (jwt.WithExpirationRequired); будь-яку помилку зводь до
+       ErrInvalidToken (прострочений, підроблений, alg=none тощо).
+     - ValidateSecret() для перевірки при старті сервера (log.Fatal у main).
+
+  4) DTO (захист від Mass Assignment)
+     RegisterRequest {email, password, full_name} та LoginRequest {email, password}.
+     Жодних полів id/role/password_hash. Валідація: email за net/mail,
+     нормалізація (trim + lower-case), пароль 8..72 байти (ліміт bcrypt).
+     Декодер тіла має відхиляти невідомі поля (DisallowUnknownFields).
+
+  5) Хендлери internal/handler/auth_handler.go
+     POST /api/v1/auth/register:
+       - хешує пароль, роль завжди "reader" (ігнорує будь-що від клієнта);
+       - дубль email -> HTTP 422, message "email already registered";
+       - успіх -> HTTP 201 з користувачем (без password_hash).
+     POST /api/v1/auth/login:
+       - невідомий email І неправильний пароль -> ОДНАКОВА відповідь HTTP 401
+         з message "invalid credentials" (захист від User Enumeration);
+       - для невідомого email виконай фіктивний bcrypt-compare, щоб вирівняти час;
+       - успіх -> HTTP 200 {"token": "...", "user": {...}}.
+     Репозиторій користувачів — через інтерфейс UserRepository
+     (Create, FindByEmail), запити лише параметризовані.
+
+  6) Вимоги до безпеки
+     Не логуй паролі, хеші й токени; внутрішні помилки не показуй клієнту.
+
+Результат інтеграції:
+  migrations/000003_add_auth_fields.{up,down}.sql, internal/model/user.go,
+  internal/model/auth_input.go, internal/model/loan.go, internal/auth/{password,token}.go,
+  internal/repository/user_repository.go, internal/handler/auth_handler.go.
+
+Ручний огляд результату (що перевірено/виправлено після генерації):
+  * міграція: AI першою версією пропонував ADD COLUMN password_hash/role —
+    це дублювало б 000001, тому у промпт додано явну заборону (пункт 1);
+  * ParseToken: додано WithValidMethods та WithExpirationRequired, бо без них
+    можливі атаки alg=none та токени без терміну дії;
+  * login: додано dummy-compare проти timing-атаки на перебір email.
+
+---------------------------------------------------------------
+ЗАВДАННЯ 2.2 — Ланцюжок middleware (AuthMiddleware + RequireRole)
+---------------------------------------------------------------
+
+Контекст, який передається разом із промптом:
+  * пакет internal/auth (ParseToken повертає *auth.Claims{UserID, Role} або
+    ErrInvalidToken), model.NewErrorResponse(code, message), коди
+    model.CodeUnauthenticated ("unauthenticated") та model.CodeForbidden ("forbidden");
+  * ролі: model.RoleReader / RoleLibrarian / RoleAdmin;
+  * роутер збирається у internal/app/app.go (його викликає cmd/api/main.go).
+
+ПРОМПТ:
+
+  Напиши два Gin-middleware для LibraTrack. Коментарі українською.
+
+  1) internal/middleware/auth.go — AuthMiddleware() gin.HandlerFunc
+     - бере токен із заголовка "Authorization: Bearer <token>";
+     - немає заголовка або схема не Bearer -> 401 "missing or malformed token";
+     - викликає auth.ParseToken (перевіряє підпис HS256 та claim exp); помилка
+       -> 401 "invalid or expired token" (причину не розкривати);
+     - успіх -> c.Set("user_id", claims.UserID), c.Set("role", claims.Role), c.Next().
+
+  2) internal/middleware/rbac.go — RequireRole(allowed ...string) gin.HandlerFunc
+     - variadic; читає c.Get("role");
+     - ролі в контексті немає (користувач не автентифікований) -> 401;
+     - роль є, але її немає серед allowed -> 403 "insufficient permissions";
+     - дозволена роль -> c.Next().
+
+  3) Обидва middleware при відмові МУСЯТЬ викликати c.AbortWithStatusJSON(...)
+     (а не c.JSON), щоб ланцюжок зупинявся і хендлер не виконувався.
+     Формат помилки: {"error": {"code": "...", "message": "..."}}.
+
+  4) Покажи реєстрацію маршрутів з вкладеними групами Gin:
+       api       := r.Group("/api/v1")
+       public    := api.Group("")                                  // без токена
+       protected := api.Group("", AuthMiddleware())                // 401
+       staff     := protected.Group("", RequireRole("librarian","admin"))  // 403
+       admin     := protected.Group("", RequireRole("admin"))
+     Порядок виконання: AuthMiddleware ПЕРЕД RequireRole (staff/admin вкладені
+     в protected). Поясни в коментарі, чому зворотний порядок неможливий:
+     RequireRole читає роль, яку кладе AuthMiddleware.
+     Розподіл: public — register, login, GET books/authors/categories;
+     protected — GET /me/loans; staff — POST/PUT/DELETE каталогу, POST /loans,
+     POST /loans/:id/return; admin — GET /users, PUT /users/:id/role.
+
+Результат інтеграції:
+  internal/middleware/{auth,rbac}.go, маршрути в internal/app/app.go,
+  кожен handler розділено на RegisterPublic (GET) та RegisterStaff (запис).
+  Реєстрація груп лежить в app.NewRouter, який викликає main.go (а не в самому
+  main.go), щоб ту саму конфігурацію маршрутів використовували і сервер, і тести.
+
+Ручний огляд результату:
+  * різниця 401/403: без токена на staff-маршруті має бути 401, а не 403
+    (перевіряється тестом "без токена на staff -> 401");
+  * невідома роль в токені (напр. "hacker") -> 403, бо її немає в allowed;
+  * AbortWithStatusJSON перевірено тестом: хендлер при відмові не викликається.

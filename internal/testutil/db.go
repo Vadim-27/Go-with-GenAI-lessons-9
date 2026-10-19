@@ -51,7 +51,7 @@ func NewDB(t *testing.T, schema string) *gorm.DB {
 	if err != nil {
 		t.Fatalf("connect to schema %s: %v", schema, err)
 	}
-	clean := "TRUNCATE book_authors, copies, books, authors, categories, users RESTART IDENTITY CASCADE"
+	clean := "TRUNCATE loans, book_authors, copies, books, authors, categories, users RESTART IDENTITY CASCADE"
 	if err := db.Exec(clean).Error; err != nil {
 		t.Fatalf("remove seed data: %v", err)
 	}
